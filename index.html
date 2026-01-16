@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JKGA - Grimório V7 (Parser Fix + HTML Import)</title>
+<style>
+  /* --- UI EDITOR --- */
+  body { background: #050505; color: #ccc; font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; display: flex; height: 100vh; overflow: hidden; font-size: 11px; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #111; }
+  ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #6D20C5; }
+
+  .editor-pane { width: 45%; padding: 15px; border-right: 1px solid #222; background: #0f0f0f; display: flex; flex-direction: column; box-shadow: 5px 0 15px rgba(0,0,0,0.5); z-index: 10; position: relative; }
+  .preview-pane { width: 55%; padding: 30px; background: #000; overflow-y: auto; display: flex; flex-direction: column; align-items: center; background-image: radial-gradient(#1a1a1a 1px, transparent 1px); background-size: 20px 20px; }
+
+  h1 { font-size: 14px; color: #fff; text-transform: uppercase; letter-spacing: 2px; margin: 0 0 10px 0; border-left: 3px solid #6D20C5; padding-left: 10px; display:flex; justify-content:space-between; align-items: center; }
+  
+  .meta-box { background: #161616; padding: 8px; border: 1px solid #333; margin-bottom: 10px; border-radius: 2px; }
+  input, textarea, select { background: #0a0a0a; border: 1px solid #333; color: #ccc; font-family: monospace; font-size: 11px; padding: 5px; box-sizing: border-box; width: 100%; border-radius: 2px; margin-bottom: 2px; }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: #6D20C5; color: #fff; }
+  
+  .editor-tabs { display: flex; gap: 1px; margin-bottom: 5px; background: #000; padding: 2px; }
+  .tab-btn { background: #111; border: 1px solid #222; color: #666; padding: 6px; cursor: pointer; flex: 1; text-align: center; font-weight: bold; font-size: 9px; text-transform: uppercase; transition: .2s; }
+  .tab-btn.active { background: #6D20C5; color: #fff; border-color: #6D20C5; }
+  .tab-btn:hover:not(.active) { background: #222; color: #999; }
+
+  .tab-content { display: none; flex: 1; overflow-y: auto; padding-right: 5px; }
+  .tab-content.active { display: block; }
+
+  .item-entry { background: #141414; border-left: 3px solid #333; padding: 8px 8px 8px 18px; margin-bottom: 6px; position: relative; display: flex; flex-direction: column; gap: 4px; transition: .2s; }
+  .item-entry:hover { background: #181818; }
+  .item-entry.dragging { opacity: 0.5; border: 1px dashed #6D20C5; }
+  .drag-handle { position: absolute; left: 2px; top: 50%; transform: translateY(-50%); color: #444; cursor: grab; font-size: 14px; padding: 5px; }
+  .drag-handle:hover { color: #ccc; }
+  .row { display: flex; gap: 5px; }
+  .g4-entry { display: flex; align-items: center; gap: 5px; background: #111; padding: 5px 5px 5px 15px; border: 1px solid #222; margin-bottom: 4px; position: relative; }
+
+  button { cursor: pointer; border: none; padding: 6px 10px; border-radius: 2px; font-weight: bold; transition: 0.2s; font-size: 9px; text-transform: uppercase; }
+  .btn-main { background: #6D20C5; color: #fff; width: 100%; margin-bottom: 5px; }
+  .btn-sec { background: #333; color: #ccc; width: 100%; margin-bottom: 5px; border: 1px solid #444; }
+  .btn-add { background: #1a1a1a; color: #aaa; width: 100%; border: 1px dashed #444; margin-top: 5px; padding: 8px; }
+  .btn-add:hover { background: #333; color: #fff; border-color: #6D20C5; }
+  .btn-gen { background: #ddd; color: #000; padding: 10px; width: 100%; margin-top: 10px; }
+  .btn-gen:hover { background: #fff; }
+  .btn-del { background: none; color: #522; font-size: 14px; padding: 0 4px; }
+  .btn-del:hover { color: #f44; }
+  .btn-clear { background: #3a1111; color: #ffaaaa; padding: 3px 6px; margin-left: auto; }
+
+  .bulk-area { display: none; margin-bottom: 10px; background: #161616; padding: 8px; border: 1px dashed #444; }
+  .bulk-area.active { display: block; }
+  
+  .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; display: flex; justify-content: center; align-items: center; opacity: 0; pointer-events: none; transition: .3s; }
+  .modal-overlay.active { opacity: 1; pointer-events: all; }
+  .modal-box { background: #1a1a1a; border: 1px solid #6D20C5; width: 300px; padding: 20px; text-align: center; box-shadow: 0 0 20px rgba(109, 32, 197, 0.2); }
+  .modal-btn { background: #6D20C5; color: #fff; width: 45%; margin: 5px; padding: 8px; }
+
+  #finalCode { position: absolute; left: -9999px; opacity: 0; }
+  .prev-wrap { width: 100%; max-width: 800px; }
+  
+  /* IMPORT EXTERNO PARA PREVIEW */
+  @import url('https://goldenagerpg.github.io/templates.io/grimoriocurses.css');
+</style>
+</head>
+<body>
+
+  <div id="customModal" class="modal-overlay">
+    <div class="modal-box">
+      <h3 id="mTitle" style="margin:0 0 10px 0; color:#6D20C5; text-transform:uppercase;">Aviso</h3>
+      <p id="mMsg" style="font-size:12px; color:#ccc;">Msg</p>
+      <div id="mBtns" style="display:flex; justify-content:center; margin-top:15px;"></div>
+    </div>
+  </div>
+
+  <div class="editor-pane">
+    <h1>Grimório <span id="totalDisplay" style="font-size:10px; color:#888;"></span></h1>
+
+    <div class="meta-box">
+        <label>Nome do Personagem</label>
+        <input type="text" id="charName" placeholder="Ex: Geto Suguru" oninput="saveData(); renderPreview()">
+    </div>
+    
+    <div style="display:flex; gap:5px; margin-bottom:5px;">
+        <button class="btn-sec" onclick="toggleArea('bulkText')">IMPORTAR TEXTO (LISTA)</button>
+        <button class="btn-sec" onclick="toggleArea('bulkHtml')">IMPORTAR CÓDIGO HTML</button>
+    </div>
+
+    <div id="bulkText" class="bulk-area">
+        <label style="color:#6D20C5;">COLE A LISTA DE TEXTO</label>
+        <textarea id="bulkInputText" style="height:80px;" placeholder="Ex:&#10;Maldições Grau 4&#10;Mannequins [x2]&#10;O Empacotador&#10;..."></textarea>
+        <button class="btn-main" onclick="processBulkText()">PROCESSAR TEXTO</button>
+    </div>
+
+    <div id="bulkHtml" class="bulk-area">
+        <label style="color:#6D20C5;">COLE O CÓDIGO HTML GERADO ANTERIORMENTE</label>
+        <textarea id="bulkInputHtml" style="height:80px;" placeholder="<div class='gr-v5-box'>..."></textarea>
+        <button class="btn-main" onclick="processBulkHtml()">RECONSTRUIR FICHA</button>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:5px;">
+        <span style="font-size:9px; font-weight:bold; color:#666;">GERENCIAR POR GRAU</span>
+        <button class="btn-clear" onclick="clearAll()">RESET</button>
+    </div>
+
+    <div class="editor-tabs">
+        <div class="tab-btn active" onclick="switchTab('g4', this)">G 4</div>
+        <div class="tab-btn" onclick="switchTab('g3', this)">G 3</div>
+        <div class="tab-btn" onclick="switchTab('g2', this)">G 2</div>
+        <div class="tab-btn" onclick="switchTab('g1', this)">G 1</div>
+        <div class="tab-btn" onclick="switchTab('semi', this)">SEMI</div>
+        <div class="tab-btn" onclick="switchTab('esp', this)">ESP</div>
+    </div>
+
+    <div id="tab-g4" class="tab-content active"></div>
+    <div id="tab-g3" class="tab-content"></div>
+    <div id="tab-g2" class="tab-content"></div>
+    <div id="tab-g1" class="tab-content"></div>
+    <div id="tab-semi" class="tab-content"></div>
+    <div id="tab-esp" class="tab-content"></div>
+
+    <button id="addBtn" class="btn-add" onclick="addItem()">+ ADICIONAR (GRAU 4)</button>
+
+    <button class="btn-gen" onclick="generateCode()">COPIAR CÓDIGO (FÓRUM)</button>
+    <textarea id="finalCode"></textarea>
+  </div>
+
+  <div class="preview-pane">
+    <div id="previewArea" class="prev-wrap"></div>
+  </div>
+
+<script>
+// --- DB ---
+let db = { g4: [], g3: [], g2: [], g1: [], semi: [], esp: [] };
+let currentTab = 'g4';
+let draggedIdx = null;
+
+// --- UTILS ---
+const grades = [
+    {id:'g4', label:'Grau 4'}, {id:'g3', label:'Grau 3'}, {id:'g2', label:'Grau 2'},
+    {id:'g1', label:'Grau 1'}, {id:'semi', label:'Semi-Esp'}, {id:'esp', label:'Especial'}
+];
+
+function toggleArea(id) {
+    document.querySelectorAll('.bulk-area').forEach(el => el.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+}
+
+function getMoveOptions(current) {
+    return grades.map(g => `<option value="${g.id}" ${g.id===current?'selected':''}>${g.label}</option>`).join('');
+}
+
+// --- PARSER DE TEXTO V7 (LOOKAHEAD FIX) ---
+function processBulkText() {
+    const text = document.getElementById('bulkInputText').value;
+    if(!text.trim()) return showModal('Vazio', 'O grimório precisa de tinta.');
+
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l !== '');
+    let currentItem = null;
+    let isParsingG4 = false;
+    let count = 0;
+    const qtyRegex = /\[x(\d+)\]/i;
+    const gradeMap = {'grau 4':'g4','grau 3':'g3','grau 2':'g2','grau 1':'g1','semi':'semi','especial':'esp'};
+
+    for (let i = 0; i < lines.length; i++) {
+        let line = lines[i];
+        const lower = line.toLowerCase();
+
+        // IGNORAR LINHAS INUTEIS
+        if(lower.startsWith('contador') || lower.startsWith('total:') || line === '.') continue;
+
+        // HEADER G4
+        if(lower.includes('grau 4') && lower.includes('maldições')) { isParsingG4 = true; continue; }
+
+        // LINK DETECTION
+        if(lower.startsWith('ficha:') || lower.startsWith('obtenção:') || lower.startsWith('obtencao:')) {
+            if(currentItem) {
+                const val = line.split(':')[1].trim();
+                if(lower.startsWith('ficha')) currentItem.linkSheet = val;
+                else currentItem.linkObt = val;
+            }
+            continue;
+        }
+
+        const hasQty = qtyRegex.test(line);
+
+        // LÓGICA G4 COM LOOKAHEAD
+        if(isParsingG4) {
+            // Se tem [xN], é G4 com certeza.
+            if(hasQty) {
+                let qty = 1, name = line;
+                const m = line.match(qtyRegex);
+                if(m) { qty = parseInt(m[1]); name = line.replace(qtyRegex, '').trim().replace(/\.$/, ''); }
+                db.g4.push({ name, qty, linkObt: '' });
+                count++;
+                continue;
+            }
+            
+            // Se NÃO tem [xN], precisamos ver se é um G4 simples ou o título de um Card (Ex: "O Empacotador")
+            // Checamos a PRÓXIMA linha.
+            const nextLine = (i + 1 < lines.length) ? lines[i+1] : "";
+            const nextLower = nextLine.toLowerCase();
+            
+            // Se a próxima linha é longa (>40 chars) OU menciona "Grau X", então a linha ATUAL é um Título de Card.
+            const isNextDescription = nextLine.length > 40 || nextLower.includes('grau ') || nextLower.includes('maldição');
+
+            if(isNextDescription) {
+                isParsingG4 = false; // Sai do modo G4, pois achamos um Card
+                // Não damos continue, deixamos cair na lógica de Card abaixo
+            } else if (line.length < 40 && !line.includes('.')) {
+                // É um G4 simples sem quantidade (assume 1)
+                db.g4.push({ name: line.replace(/\.$/, ''), qty: 1, linkObt: '' });
+                count++;
+                continue;
+            }
+        }
+
+        // LÓGICA CARDS (G3+)
+        if(!isParsingG4) {
+            const isHeader = (!currentItem || currentItem.linkSheet) && line.length < 60 && !line.endsWith('.');
+            
+            if(isHeader) {
+                if(currentItem) pushItem(currentItem);
+                currentItem = { name: line.replace(/\.$/, ''), desc:'', img:'', qty:1, linkSheet:'', linkObt:'', explicitGrade:null };
+                count++;
+            } else if(currentItem) {
+                // Scanner de Grau
+                for(let [k,v] of Object.entries(gradeMap)) { 
+                    if(lower.indexOf(k) > -1 && lower.indexOf(k) < 80) currentItem.explicitGrade = v; 
+                }
+                if(currentItem.desc) currentItem.desc += '\n';
+                currentItem.desc += line;
+            }
+        }
+    }
+    
+    if(currentItem) pushItem(currentItem);
+    
+    document.getElementById('bulkInputText').value = '';
+    toggleArea(''); 
+    reCalc(); renderTab(currentTab); saveData();
+    showModal('Ritual Concluído', `${count} registros processados.`);
+}
+
+function pushItem(item) {
+    const target = item.explicitGrade || 'g3';
+    if(target === 'g4') db.g4.push({ name: item.name, qty: 1, linkObt: item.linkObt });
+    else db[target].push(item);
+}
+
+// --- PARSER HTML V1 (IMPORTAR CÓDIGO) ---
+function processBulkHtml() {
+    const code = document.getElementById('bulkInputHtml').value;
+    if(!code) return showModal('Erro', 'Cole o HTML.');
+
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(code, 'text/html');
+        
+        // Reset DB
+        db = { g4: [], g3: [], g2: [], g1: [], semi: [], esp: [] };
+        
+        // 1. Extrair G4
+        doc.querySelectorAll('.gr-g4-card').forEach(el => {
+            const txt = el.textContent; // "Nome x2"
+            const match = txt.match(/(.*?)x(\d+)/);
+            if(match) {
+                const name = match[1].trim();
+                const qty = parseInt(match[2]);
+                const linkEl = el.querySelector('a');
+                const link = linkEl ? linkEl.href : '';
+                db.g4.push({ name, qty, linkObt: link });
+            }
+        });
+
+        // 2. Extrair Cards
+        doc.querySelectorAll('.gr-card').forEach(el => {
+            // Identificar grau pela classe da borda (b-g3, b-g2...)
+            let grade = 'g3';
+            if(el.classList.contains('b-g4')) grade = 'g4';
+            if(el.classList.contains('b-g2')) grade = 'g2';
+            if(el.classList.contains('b-g1')) grade = 'g1';
+            if(el.classList.contains('b-gs')) grade = 'semi';
+            if(el.classList.contains('b-ge')) grade = 'esp';
+
+            const nameFull = el.querySelector('.gr-name').textContent.trim();
+            // Extrair Qtd do nome "Nome [x2]"
+            let name = nameFull;
+            let qty = 1;
+            const qMatch = nameFull.match(/(.*?)\[x(\d+)\]/);
+            if(qMatch) {
+                name = qMatch[1].trim();
+                qty = parseInt(qMatch[2]);
+            }
+
+            const desc = el.querySelector('.gr-desc').innerText.trim(); // innerText preserva quebras de linha
+            
+            // Imagem
+            const imgEl = el.querySelector('img');
+            const img = imgEl ? imgEl.src : '';
+
+            // Links
+            const links = el.querySelectorAll('.gr-links a');
+            let linkSheet = '', linkObt = '';
+            links.forEach(a => {
+                if(a.textContent.includes('FICHA')) linkSheet = a.href;
+                if(a.textContent.includes('OBT') || a.textContent.includes('OBTENÇÃO')) linkObt = a.href;
+            });
+
+            db[grade].push({ name, qty, desc, img, linkSheet, linkObt });
+        });
+
+        // 3. Metadata
+        const titleEl = doc.querySelector('.gr-v5-stats span');
+        if(titleEl) {
+            document.getElementById('charName').value = titleEl.textContent.trim();
+        }
+
+        document.getElementById('bulkInputHtml').value = '';
+        toggleArea('');
+        reCalc(); renderAllTabs(); saveData();
+        showModal('Restaurado', 'Grimório reconstruído com sucesso.');
+
+    } catch(e) {
+        console.error(e);
+        showModal('Falha', 'Código HTML inválido ou estrutura desconhecida.');
+    }
+}
+
+// --- CRUD ---
+function switchTab(tab, btn) {
+    currentTab = tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById(`tab-${tab}`).classList.add('active');
+    document.getElementById('addBtn').innerText = `+ ADICIONAR (${tab.toUpperCase()})`;
+    renderTab(tab); renderPreview(); 
+}
+
+function addItem() {
+    if(currentTab === 'g4') db.g4.push({ name:'Maldição Menor', qty:1, linkObt:'' });
+    else db[currentTab].push({ name:'Nova Maldição', desc:'', img:'', qty:1, linkSheet:'', linkObt:'' });
+    renderTab(currentTab); reCalc(); saveData();
+}
+
+function updateItem(grade, idx, field, val) {
+    db[grade][idx][field] = val;
+    if(field === 'qty') reCalc();
+    renderPreview(); saveData();
+}
+
+function moveItem(grade, idx, newGrade) {
+    if(grade === newGrade) return;
+    const item = db[grade].splice(idx, 1)[0];
+    if(newGrade === 'g4') {
+        db.g4.push({ name: item.name, qty: parseInt(item.qty)||1, linkObt: item.linkObt || '' });
+    } else {
+        if(grade === 'g4') { item.desc='Promovida.'; item.img=''; item.linkSheet=''; }
+        db[newGrade].push(item);
+    }
+    renderTab(grade); reCalc(); saveData();
+}
+
+function removeItem(grade, idx) {
+    showModal('Exorcizar', 'Banir esta entidade?', true, () => {
+        db[grade].splice(idx, 1); renderTab(grade); reCalc(); saveData();
+    });
+}
+
+function clearAll() {
+    showModal('Purificação', 'Queimar todo o grimório?', true, () => {
+        db = { g4: [], g3: [], g2: [], g1: [], semi: [], esp: [] };
+        renderAllTabs(); reCalc(); saveData();
+    });
+}
+
+// --- DND ---
+function handleDragStart(e, idx) { draggedIdx = idx; e.dataTransfer.effectAllowed = 'move'; e.target.classList.add('dragging'); }
+function handleDragEnd(e) { e.target.classList.remove('dragging'); draggedIdx = null; }
+function handleDragOver(e) { e.preventDefault(); }
+function handleDrop(e, targetIdx, grade) {
+    e.preventDefault();
+    if(draggedIdx === null || draggedIdx === targetIdx) return;
+    const item = db[grade].splice(draggedIdx, 1)[0];
+    db[grade].splice(targetIdx, 0, item);
+    renderTab(grade); saveData(); renderPreview();
+}
+
+// --- RENDERS ---
+function renderAllTabs() { grades.forEach(g => renderTab(g.id)); renderPreview(); }
+
+function renderTab(grade) {
+    const c = document.getElementById(`tab-${grade}`);
+    c.innerHTML = '';
+    
+    db[grade].forEach((item, idx) => {
+        const div = document.createElement('div');
+        div.setAttribute('draggable', true);
+        div.ondragstart = (e) => handleDragStart(e, idx);
+        div.ondragend = (e) => handleDragEnd(e);
+        div.ondragover = handleDragOver;
+        div.ondrop = (e) => handleDrop(e, idx, grade);
+
+        if(grade === 'g4') {
+            div.className = 'g4-entry';
+            div.innerHTML = `
+                <span class="drag-handle">☰</span>
+                <input style="flex:2" value="${item.name}" oninput="updateItem('${grade}',${idx},'name',this.value)">
+                <input type="number" style="width:40px" value="${item.qty}" oninput="updateItem('${grade}',${idx},'qty',this.value)">
+                <input placeholder="Link Obtenção" style="flex:1" value="${item.linkObt||''}" oninput="updateItem('${grade}',${idx},'linkObt',this.value)">
+                <button class="btn-del" onclick="removeItem('${grade}',${idx})">×</button>
+            `;
+        } else {
+            div.className = 'item-entry';
+            div.innerHTML = `
+                <span class="drag-handle">☰</span>
+                <div class="row">
+                    <input class="name" placeholder="Nome" value="${item.name}" oninput="updateItem('${grade}',${idx},'name',this.value)">
+                    <input type="number" style="width:50px" placeholder="Qtd" value="${item.qty}" oninput="updateItem('${grade}',${idx},'qty',this.value)">
+                    <select style="width:80px" onchange="moveItem('${grade}',${idx},this.value)">${getMoveOptions(grade)}</select>
+                </div>
+                <input placeholder="Imagem URL" value="${item.img||''}" oninput="updateItem('${grade}',${idx},'img',this.value)">
+                <textarea style="height:50px" placeholder="Descrição" oninput="updateItem('${grade}',${idx},'desc',this.value)">${item.desc}</textarea>
+                <div class="row">
+                    <input placeholder="Link Ficha (Discreto)" value="${item.linkSheet||''}" oninput="updateItem('${grade}',${idx},'linkSheet',this.value)">
+                    <input placeholder="Link Obtenção (Discreto)" value="${item.linkObt||''}" oninput="updateItem('${grade}',${idx},'linkObt',this.value)">
+                </div>
+                <button class="btn-del" style="top:5px;right:5px" onclick="removeItem('${grade}',${idx})">×</button>
+            `;
+        }
+        c.appendChild(div);
+    });
+}
+
+function reCalc() {
+    let g4 = 0, total = 0;
+    Object.keys(db).forEach(k => {
+        db[k].forEach(i => {
+            const q = parseInt(i.qty)||1;
+            total += q;
+            if(k === 'g4') g4 += q;
+        });
+    });
+    document.getElementById('totalDisplay').innerText = `G4: ${g4} | Total: ${total}`;
+    renderPreview();
+}
+
+function renderPreview() { document.getElementById('previewArea').innerHTML = generateHTML(false); }
+
+function generateHTML(minified = false) {
+    const charName = document.getElementById('charName').value || 'Manipulador';
+    let g4Count = 0, totalCount = 0;
+    
+    // HTML Generators
+    const genG4 = () => {
+        if(db.g4.length === 0) return `<div class="gr-empty">Vazio</div>`;
+        return `<div class="gr-g4-grid">` + db.g4.map(i => {
+            const q = parseInt(i.qty)||1; g4Count += q; totalCount += q;
+            const obt = i.linkObt ? `<a href="${i.linkObt}" target="_blank">★</a>` : '';
+            return `<div class="gr-g4-card"><span>${i.name}<b>x${q}</b></span>${obt}</div>`;
+        }).join('') + `</div>`;
+    };
+
+    const genCards = (key, label, colorCls) => {
+        if(db[key].length === 0) return `<div class="gr-empty">Vazio</div>`;
+        return `<div class="gr-grid">` + db[key].map(i => {
+            const q = parseInt(i.qty)||1; totalCount += q;
+            const img = i.img ? `<img src="${i.img}" class="gr-img">` : `<div class="gr-no-img">?</div>`;
+            
+            const sht = (i.linkSheet && i.linkSheet.includes('http')) ? `<a href="${i.linkSheet}" target="_blank">FICHA</a>` : `<span style="opacity:0.3">FICHA</span>`;
+            const obt = (i.linkObt && i.linkObt.includes('http')) ? `<a href="${i.linkObt}" target="_blank">OBT</a>` : `<span style="opacity:0.3">OBT</span>`;
+            
+            const name = q > 1 ? `${i.name} [x${q}]` : i.name;
+            
+            return `
+            <div class="gr-card ${colorCls}">
+                ${img}
+                <div class="gr-info">
+                    <div class="gr-top"><span class="gr-name">${name}</span><span class="gr-tag ${colorCls}-t">${label}</span></div>
+                    <div class="gr-desc">${i.desc}</div>
+                    <div class="gr-links">${sht} • ${obt}</div>
+                </div>
+            </div>`;
+        }).join('') + `</div>`;
+    };
+
+    // Calculate totals
+    const c4 = genG4();
+    const c3 = genCards('g3','Grau 3','b-g3');
+    const c2 = genCards('g2','Grau 2','b-g2');
+    const c1 = genCards('g1','Grau 1','b-g1');
+    const cs = genCards('semi','Semi-Esp','b-gs');
+    const ce = genCards('esp','Especial','b-ge');
+
+    // LINK EXTERNO
+    const linkTag = `<link href="https://goldenagerpg.github.io/templates.io/grimoriocurses.css" rel="stylesheet" type="text/css">`;
+    
+    // HTML STRUCTURE
+    const html = `<div class="gr-v5-box"><input type="radio" name="grtabs" id="tab4" class="gr-v5-check" ${currentTab=='g4'?'checked':''}><input type="radio" name="grtabs" id="tab3" class="gr-v5-check" ${currentTab=='g3'?'checked':''}><input type="radio" name="grtabs" id="tab2" class="gr-v5-check" ${currentTab=='g2'?'checked':''}><input type="radio" name="grtabs" id="tab1" class="gr-v5-check" ${currentTab=='g1'?'checked':''}><input type="radio" name="grtabs" id="tabs" class="gr-v5-check" ${currentTab=='semi'?'checked':''}><input type="radio" name="grtabs" id="tabe" class="gr-v5-check" ${currentTab=='esp'?'checked':''}><div class="gr-v5-head"><div class="gr-v5-title">Grimório</div><div class="gr-v5-stats"><span>${charName}</span><br><span>G4: <b>${g4Count}</b> | Total: <b>${totalCount}</b></span></div></div><div class="gr-v5-nav"><label for="tab4">Grau 4</label><label for="tab3">Grau 3</label><label for="tab2">Grau 2</label><label for="tab1">Grau 1</label><label for="tabs">Semi</label><label for="tabe">Especial</label></div><div class="gr-v5-body"><div class="gr-v5-content c4">${c4}</div><div class="gr-v5-content c3">${c3}</div><div class="gr-v5-content c2">${c2}</div><div class="gr-v5-content c1">${c1}</div><div class="gr-v5-content cs">${cs}</div><div class="gr-v5-content ce">${ce}</div></div></div>`;
+
+    const full = linkTag + html;
+    return minified ? full.replace(/(\r\n|\n|\r)/gm, "").replace(/\s+/g, ' ') : full;
+}
+
+function generateCode() {
+    const code = generateHTML(true);
+    const txt = document.getElementById('finalCode');
+    txt.value = code;
+    if (navigator.clipboard) { navigator.clipboard.writeText(code).then(() => showModal('Sucesso', 'Código Pronto!')); }
+    else { txt.select(); document.execCommand('copy'); showModal('Sucesso', 'Copiado (Legacy).'); }
+}
+
+function showModal(title, msg, isConfirm = false, onConfirm = null) {
+    document.getElementById('mTitle').innerText = title;
+    document.getElementById('mMsg').innerText = msg;
+    const box = document.getElementById('mBtns'); box.innerHTML = '';
+    if(isConfirm) {
+        const b1 = document.createElement('button'); b1.className='modal-btn'; b1.innerText='SIM'; b1.onclick=()=>{onConfirm();closeModal()};
+        const b2 = document.createElement('button'); b2.className='modal-btn'; b2.style.background='#333'; b2.innerText='NÃO'; b2.onclick=closeModal;
+        box.append(b1,b2);
+    } else {
+        const b1 = document.createElement('button'); b1.className='modal-btn'; b1.innerText='OK'; b1.onclick=closeModal;
+        box.append(b1);
+    }
+    document.getElementById('customModal').classList.add('active');
+}
+function closeModal() { document.getElementById('customModal').classList.remove('active'); }
+
+// --- PERSISTENCIA ---
+function saveData() {
+    const data = { meta: { name: document.getElementById('charName').value }, db: db };
+    localStorage.setItem('jkga_grim_v5', JSON.stringify(data));
+}
+function loadData() {
+    const saved = localStorage.getItem('jkga_grim_v5');
+    if(saved) {
+        const data = JSON.parse(saved);
+        if(data.meta) document.getElementById('charName').value = data.meta.name || '';
+        db = data.db || { g4: [], g3: [], g2: [], g1: [], semi: [], esp: [] };
+        renderAllTabs(); reCalc();
+    }
+}
+
+loadData();
+</script>
+</body>
+</html>
